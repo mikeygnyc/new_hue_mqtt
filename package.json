@@ -15,5 +15,12 @@
   "bugs": {
     "url": "https://github.com/mikeygnyc/new_hue_mqtt/issues"
   },
-  "homepage": "https://github.com/mikeygnyc/new_hue_mqtt#readme"
+  "homepage": "https://github.com/mikeygnyc/new_hue_mqtt#readme",
+  "dependencies": {
+    "@types/mqtt": "^2.5.0",
+    "@types/node": "^12.7.2",
+    "@types/request": "^2.48.2",
+    "mqtt": "^3.0.0",
+    "request": "^2.88.0"
+  }
 }
