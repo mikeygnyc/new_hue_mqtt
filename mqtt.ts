@@ -31,4 +31,7 @@ export class MQTT_Client extends EventEmitter {
             return console.error("MQTT Error on close: %s", err.toString());
         }
     }
+    public publish(topic:string,payload:string){
+        this.client.publish(topic,payload);
+    }
 }

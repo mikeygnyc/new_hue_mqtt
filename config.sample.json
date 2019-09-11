@@ -1,0 +1,18 @@
+{
+    "broker": {
+      "host": "x.y.z"
+    },
+    "bridges": [
+      {
+        "host": "a.b.c.d",
+        "username": "xxxxxx",
+        "interval": 250,
+        "prefix": "hue",
+        "subtopics":false,
+        "logchanges":true,
+        "enable_sensors_poll":true,
+        "enable_lights_poll":true,
+        "enable_light_control":true
+      }
+    ]
+  }

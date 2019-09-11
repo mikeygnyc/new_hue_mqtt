@@ -1,27 +1,22 @@
 'use strict';
 
-
-var equal   = require('equals');
+import { MQTT_Client } from "./mqtt";
+import { BridgePoller } from "./poller";
 let config:any  = require('./config.json');
+let client:MQTT_Client = new MQTT_Client(config);
+if (config.bridges === undefined || !config.bridges.length) {
+    console.error(
+        "No Philips Hue bridges are configured. Please configure a bridge and try again."
+    );
+    process.exit(1);
+} 
 
+let poller:BridgePoller=new BridgePoller(config,client);
 
+poller.startPolling();
 
-
-function slugify(value) {
-  return value.toString().toLowerCase().replace(/[ \.\-\/\\]/g, '_').replace(/[^a-z0-9_]/g, '');
-}
-
-
-
-
-
-function getTime(sensor) {
-  return new Date(sensor.state.lastupdated);
-}
-
-// Exit handling to disconnect client
 function exitHandler() {
-  client.end();
+  poller.end();
   process.exit();
 }
 
