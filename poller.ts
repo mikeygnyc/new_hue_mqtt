@@ -77,21 +77,25 @@ export class BridgePoller extends EventEmitter {
     private runPolls(_bridge: any) {
         let bridge = _bridge;
         var thys=this;
-        async.series([
-            function(callback){
-                if (bridge.enable_sensors_poll) {
-                    thys.pollSensors(bridge,callback);
+        try {
+            async.series([
+                function(callback){
+                    if (bridge.enable_sensors_poll) {
+                        thys.pollSensors(bridge,callback);
+                    }
+                },
+                function(callback){
+                    if (bridge.enable_lights_poll) {
+                        thys.pollLights(bridge,callback);
+                    }
                 }
-            },
-            function(callback){
-                if (bridge.enable_lights_poll) {
-                    thys.pollLights(bridge,callback);
-                }
-            },
-            function(callback){
-                thys.setPollTimer(bridge);
-            }
-        ])
+            ]);
+        } catch (err){
+            console.error("caught error polling:" + err);
+        } finally {
+            thys.setPollTimer(bridge);
+        }
+      
        
        
         
@@ -110,8 +114,9 @@ export class BridgePoller extends EventEmitter {
             json: true,
             agent: agent
         };
+        try {
         request(sensors_opts, function(err, res, body) {
-            try {
+            
                 let proceed: boolean = true;
                 if (err) {
                     console.error(
@@ -244,16 +249,17 @@ export class BridgePoller extends EventEmitter {
                         
                     });
                 }
-            } catch (err) {
-                console.error(
-                    "Error polling lights on Hue bridge %s: %s",
-                    bridge.host,
-                    err.toString()
-                );
-            } finally {
-                callback();
-            }
+           
         });
+    } catch (err) {
+        console.error(
+            "Error polling lights on Hue bridge %s: %s",
+            bridge.host,
+            err.toString()
+        );
+    } finally {
+        callback();
+    }
     }
     private pollLights(bridge: any, callback: Function) {
         let thys = this;
@@ -264,8 +270,9 @@ export class BridgePoller extends EventEmitter {
             json: true,
             agent: agent
         };
+        try {
         request(lights_opts, function(err, res, body) {
-            try {
+            
                 let proceed: boolean = true;
                 if (err) {
                     console.error(
@@ -338,16 +345,17 @@ export class BridgePoller extends EventEmitter {
                         }
                     });
                 }
-            } catch (err) {
-                console.error(
-                    "Error polling lights on Hue bridge %s: %s",
-                    bridge.host,
-                    err.toString()
-                );
-            } finally {
-                callback();
-            }
+           
         });
+    } catch (err) {
+        console.error(
+            "Error polling lights on Hue bridge %s: %s",
+            bridge.host,
+            err.toString()
+        );
+    } finally {
+        callback();
+    }
     }
     private setPollTimer(bridge: any) {
         if (bridge.running) {
