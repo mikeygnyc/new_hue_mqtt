@@ -63,42 +63,33 @@ export class BridgePoller extends EventEmitter {
         return hash;
     }
     private slugify(value: any): string {
-        var val:string = value.toString();
-        let valLc:string=val.toLowerCase();
-        let valRepOne:string=valLc.replace(/[ \.\-\/\\]/g, "_");
-        let valRepTwo:string=valRepOne.replace(/[^a-z0-9_]/g, "");
+        var val: string = value.toString();
+        let valLc: string = val.toLowerCase();
+        let valRepOne: string = valLc.replace(/[ \.\-\/\\]/g, "_");
+        let valRepTwo: string = valRepOne.replace(/[^a-z0-9_]/g, "");
         return valRepTwo;
-        // return value
-        //     .toString()
-        //     .toLowerCase()
-        //     .replace(/[ \.\-\/\\]/g, "_")
-        //     .replace(/[^a-z0-9_]/g, "");
     }
     private runPolls(_bridge: any) {
         let bridge = _bridge;
-        var thys=this;
+        var thys = this;
         try {
             async.series([
-                function(callback){
+                function(callback) {
                     if (bridge.enable_sensors_poll) {
-                        thys.pollSensors(bridge,callback);
+                        thys.pollSensors(bridge, callback);
                     }
                 },
-                function(callback){
+                function(callback) {
                     if (bridge.enable_lights_poll) {
-                        thys.pollLights(bridge,callback);
+                        thys.pollLights(bridge, callback);
                     }
                 }
             ]);
-        } catch (err){
+        } catch (err) {
             console.error("caught error polling:" + err);
         } finally {
             thys.setPollTimer(bridge);
         }
-      
-       
-       
-        
     }
 
     private pollSensors(bridge: any, callback: Function) {
@@ -115,26 +106,25 @@ export class BridgePoller extends EventEmitter {
             agent: agent
         };
         try {
-        request(sensors_opts, function(err, res, body) {
-            
-                let proceed: boolean = true;
+            request(sensors_opts, function(err, res, body) {
                 if (err) {
                     console.error(
                         "Error polling sensors on Hue bridge %s: %s",
                         bridge.host,
                         err.toString()
                     );
-                    proceed = false;
+                    throw err;
                 }
                 if (res.statusCode !== 200) {
                     console.error(
-                        "Error polling sensors on Hue bridge %s: %s",
+                        "Error polling sensors on Hue bridge status: %s %s: %s",
+                        res.statusCode.toString(),
                         bridge.host,
                         body.toString()
                     );
-                    proceed = false;
+                    throw ("error code: " + res.statusCode.toString());
                 }
-                if (proceed) {
+               
                     let sensors: any = body;
                     if (!bridge.IdMap) {
                         bridge.IdMap = new Map<string, string>();
@@ -158,108 +148,100 @@ export class BridgePoller extends EventEmitter {
                         let sensorB = bridge.sensors[id];
                         if (sensorA.error) {
                             console.error(
-                                "Error polling sensors on Hue bridge %s: %s",
+                                "Error polling sensors on Hue bridge (sensor A) %s: %s",
                                 bridge.host,
                                 sensorA.error.description
                             );
+                            throw sensorA.error;
                         } else {
                             if (sensorB === undefined) {
                                 bridge.sensors[id] = sensorA;
-                            } 
-                                if (
-                                    thys.getHash(sensorA) !==
-                                    thys.getHash(sensorB)
-                                ) {
-                                    var nameSlug: string = thys.slugify(
-                                        sensorA.name
+                            }
+                            if (
+                                thys.getHash(sensorA) !== thys.getHash(sensorB)
+                            ) {
+                                var nameSlug: string = thys.slugify(
+                                    sensorA.name
+                                );
+                                var sendState: boolean = false;
+                                if (sensorA.uniqueid) {
+                                    var productName: string =
+                                        sensorA.productname;
+                                    var uniqueid: string = sensorA.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
+                                    var masterId: string = uniqueid.substr(
+                                        0,
+                                        28
                                     );
-                                    var sendState: boolean = false;
-                                    if (sensorA.uniqueid) {
-                                        var productName: string =
-                                            sensorA.productname;
-                                        var uniqueid: string = sensorA.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
-                                        var masterId: string = uniqueid.substr(
-                                            0,
-                                            28
-                                        );
-                                        if (bridge.IdMap.has(masterId)) {
-                                            nameSlug = bridge.IdMap.get(
-                                                masterId
-                                            ).toString();
-                                        }
-                                        switch (productName) {
-                                            case "Hue motion sensor":
-                                                nameSlug = nameSlug + "/motion";
-                                                sendState = true;
-                                                break;
-                                            case "Hue ambient light sensor":
-                                                nameSlug =
-                                                    nameSlug + "/ambientlight";
-                                                sendState = true;
-                                                break;
-                                            case "Hue temperature sensor":
-                                                nameSlug =
-                                                    nameSlug + "/temperature";
-                                                sendState = true;
-                                                break;
-                                        }
+                                    if (bridge.IdMap.has(masterId)) {
+                                        nameSlug = bridge.IdMap.get(
+                                            masterId
+                                        ).toString();
                                     }
-                                    if (sendState) {
-                                        var topic: string;
-                                        var payload: string;
-                                        if (bridge.subtopics) {
-                                            Object.keys(sensorA.state).forEach(
-                                                (key: any) => {
-                                                    var keySlug = thys.slugify(
-                                                        key
-                                                    );
-                                                    topic =
-                                                        bridge.prefix +
-                                                        "/" +
-                                                        nameSlug +
-                                                        "/" +
-                                                        keySlug;
-                                                    payload =
-                                                        sensorA.state[key];
-                                                }
-                                            );
-                                        } else {
-                                            topic =
-                                                bridge.prefix + "/" + nameSlug;
-                                            payload = JSON.stringify(
-                                                sensorA.state
-                                            );
-                                        }
-                                        if (bridge.logchanges) {
-                                            console.log(
-                                                "%s, %s %s",
-                                                new Date(Date.now()),
-                                                topic,
-                                                payload.toString()
-                                            );
-                                        }
-                                        thys.client.publish(
+                                    switch (productName) {
+                                        case "Hue motion sensor":
+                                            nameSlug = nameSlug + "/motion";
+                                            sendState = true;
+                                            break;
+                                        case "Hue ambient light sensor":
+                                            nameSlug =
+                                                nameSlug + "/ambientlight";
+                                            sendState = true;
+                                            break;
+                                        case "Hue temperature sensor":
+                                            nameSlug =
+                                                nameSlug + "/temperature";
+                                            sendState = true;
+                                            break;
+                                    }
+                                }
+                                if (sendState) {
+                                    var topic: string;
+                                    var payload: string;
+                                    if (bridge.subtopics) {
+                                        Object.keys(sensorA.state).forEach(
+                                            (key: any) => {
+                                                var keySlug = thys.slugify(key);
+                                                topic =
+                                                    bridge.prefix +
+                                                    "/" +
+                                                    nameSlug +
+                                                    "/" +
+                                                    keySlug;
+                                                payload = sensorA.state[key];
+                                            }
+                                        );
+                                    } else {
+                                        topic = bridge.prefix + "/" + nameSlug;
+                                        payload = JSON.stringify(sensorA.state);
+                                    }
+                                    if (bridge.logchanges) {
+                                        console.log(
+                                            "%s, %s %s",
+                                            new Date(Date.now()),
                                             topic,
                                             payload.toString()
                                         );
                                     }
+                                    thys.client.publish(
+                                        topic,
+                                        payload.toString()
+                                    );
                                 }
-                                bridge.sensors[id] = sensorA;
                             }
-                        
+                            bridge.sensors[id] = sensorA;
+                        }
                     });
-                }
-           
-        });
-    } catch (err) {
-        console.error(
-            "Error polling lights on Hue bridge %s: %s",
-            bridge.host,
-            err.toString()
-        );
-    } finally {
-        callback();
-    }
+                
+            });
+        } catch (err) {
+            console.error(
+                "Error polling sensors on Hue bridge %s: %s",
+                bridge.host,
+                err.toString()
+            );
+        } finally {
+            callback();
+        }
     }
     private pollLights(bridge: any, callback: Function) {
         let thys = this;
@@ -271,16 +253,14 @@ export class BridgePoller extends EventEmitter {
             agent: agent
         };
         try {
-        request(lights_opts, function(err, res, body) {
-            
-                let proceed: boolean = true;
+            request(lights_opts, function(err, res, body) {
                 if (err) {
                     console.error(
                         "Error polling lights on Hue bridge %s: %s",
                         bridge.host,
                         err.toString()
                     );
-                    proceed = false;
+                    throw err;
                 }
                 if (res.statusCode !== 200) {
                     console.error(
@@ -288,9 +268,8 @@ export class BridgePoller extends EventEmitter {
                         bridge.host,
                         body.toString()
                     );
-                    proceed = false;
+                    throw ("error code: " + res.statusCode.toString());
                 }
-                if (proceed) {
                     let lights: any = body;
 
                     Object.keys(lights).forEach((id: any) => {
@@ -302,6 +281,7 @@ export class BridgePoller extends EventEmitter {
                                 bridge.host,
                                 lightA.error.description
                             );
+                            throw lightA.error;
                         } else {
                             if (lightB === undefined) {
                                 bridge.lights[id] = lightA;
@@ -311,7 +291,9 @@ export class BridgePoller extends EventEmitter {
                                 thys.getHash(lightA.state) !==
                                 thys.getHash(lightB.state)
                             ) {
-                                var nameSlug: string = thys.slugify(lightA.name.toString());
+                                var nameSlug: string = thys.slugify(
+                                    lightA.name.toString()
+                                );
                                 var topic: string;
                                 var payload: string;
                                 if (bridge.subtopics) {
@@ -344,18 +326,17 @@ export class BridgePoller extends EventEmitter {
                             bridge.lights[id] = lightA;
                         }
                     });
-                }
-           
-        });
-    } catch (err) {
-        console.error(
-            "Error polling lights on Hue bridge %s: %s",
-            bridge.host,
-            err.toString()
-        );
-    } finally {
-        callback();
-    }
+                
+            });
+        } catch (err) {
+            console.error(
+                "Error polling lights on Hue bridge %s: %s",
+                bridge.host,
+                err.toString()
+            );
+        } finally {
+            callback();
+        }
     }
     private setPollTimer(bridge: any) {
         if (bridge.running) {
