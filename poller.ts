@@ -29,11 +29,12 @@ export class BridgePoller extends EventEmitter {
     public healthz(req, res) {
         let now:Date = new Date(Date.now());
         const threshTime=now.setSeconds(now.getSeconds()-30);
+        
         if (threshTime>this.lastUpdate){
             console.error("Last update greater than 30 seconds ago! Sending non-ok response.")
-            res.status(417).send({});
+            res.status(417).send({"Health":"FAIL"});
         } else {
-            res.status(200).send({});
+            res.status(200).send({"Health":"OK"});
         }
         
     }
