@@ -5,14 +5,37 @@ import { MQTT_Client } from "./mqtt";
 import * as crypto from "crypto";
 import * as http from "http";
 import * as async from "async";
+import express from "express";
+
 const agent = new http.Agent({ maxSockets: 5 });
 export class BridgePoller extends EventEmitter {
     public config: any;
     public client: MQTT_Client;
+    public lastUpdate: number;
     public constructor(config: any, client: MQTT_Client) {
         super();
         this.config = config;
         this.client = client;
+        // Set up the express app
+        const app = express();
+        // get all todos
+        app.get("/healthz", this.healthz.bind(this));
+        const PORT = 5000;
+
+        app.listen(PORT, () => {
+            console.log(`server running on port ${PORT}`);
+        });
+    }
+    public healthz(req, res) {
+        let now:Date = new Date(Date.now());
+        const threshTime=now.setSeconds(now.getSeconds()-30);
+        if (threshTime>this.lastUpdate){
+            console.error("Last update greater than 30 seconds ago! Sending non-ok response.")
+            res.status(417).send({});
+        } else {
+            res.status(200).send({});
+        }
+        
     }
     public end() {
         this.config.bridges.forEach((bridge: any, index: any) => {
@@ -30,8 +53,7 @@ export class BridgePoller extends EventEmitter {
 
             if (undefined === bridge.username || !bridge.username) {
                 console.error(
-                    'Cannot poll Hue bridge %s: missing required argument "username"',
-                    bridge.host
+                    `Cannot poll Hue bridge ${bridge.host}: missing required argument "username"`
                 );
                 process.exit(1);
             }
@@ -42,9 +64,7 @@ export class BridgePoller extends EventEmitter {
             bridge.sensors = {};
             bridge.lights = {};
             console.log(
-                "Polling Hue bridge %s every %dms",
-                bridge.host,
-                bridge.interval
+                `Polling Hue bridge ${bridge.host} every ${bridge.interval}ms`
             );
             this.runPolls(bridge);
         });
@@ -86,7 +106,7 @@ export class BridgePoller extends EventEmitter {
                 }
             ]);
         } catch (err) {
-            console.error("caught error polling:" + err);
+            console.error(`caught error polling: ${err}`);
         } finally {
             thys.setPollTimer(bridge);
         }
@@ -96,12 +116,7 @@ export class BridgePoller extends EventEmitter {
         let thys = this;
         let sensors_opts = {
             method: "GET",
-            uri:
-                "http://" +
-                bridge.host +
-                "/api/" +
-                bridge.username +
-                "/sensors",
+            uri:`http://${bridge.host}/api/${bridge.username}/sensors`,
             json: true,
             agent: agent
         };
@@ -109,137 +124,113 @@ export class BridgePoller extends EventEmitter {
             request(sensors_opts, function(err, res, body) {
                 if (err) {
                     console.error(
-                        "Error polling sensors on Hue bridge %s: %s",
-                        bridge.host,
-                        err.toString()
+                        `Error polling sensors on Hue bridge ${
+                            bridge.host
+                        }: ${err.toString()}`
                     );
                     throw err;
                 }
                 if (res.statusCode !== 200) {
                     console.error(
-                        "Error polling sensors on Hue bridge status: %s %s: %s",
-                        res.statusCode.toString(),
-                        bridge.host,
-                        body.toString()
+                        `Error polling sensors on Hue bridge status: ${res.statusCode.toString()} ${
+                            bridge.host
+                        }: ${body.toString()}`
                     );
-                    throw ("error code: " + res.statusCode.toString());
+                    throw `error code:  ${res.statusCode.toString()}`;
                 }
-               
-                    let sensors: any = body;
-                    if (!bridge.IdMap) {
-                        bridge.IdMap = new Map<string, string>();
-                        Object.keys(sensors).forEach((id: any) => {
-                            var sensor = sensors[id];
-                            if (sensor.uniqueid) {
-                                var nameSlug: string = thys.slugify(
-                                    sensor.name
-                                );
-                                var productName: string = sensor.productname;
-                                var uniqueid: string = sensor.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
-                                var masterId: string = uniqueid.substr(0, 28);
-                                if (productName === "Hue motion sensor") {
-                                    bridge.IdMap.set(masterId, nameSlug);
-                                }
-                            }
-                        });
-                    }
+
+                let sensors: any = body;
+                if (!bridge.IdMap) {
+                    bridge.IdMap = new Map<string, string>();
                     Object.keys(sensors).forEach((id: any) => {
-                        let sensorA = sensors[id];
-                        let sensorB = bridge.sensors[id];
-                        if (sensorA.error) {
-                            console.error(
-                                "Error polling sensors on Hue bridge (sensor A) %s: %s",
-                                bridge.host,
-                                sensorA.error.description
-                            );
-                            throw sensorA.error;
-                        } else {
-                            if (sensorB === undefined) {
-                                bridge.sensors[id] = sensorA;
+                        var sensor = sensors[id];
+                        if (sensor.uniqueid) {
+                            var nameSlug: string = thys.slugify(sensor.name);
+                            var productName: string = sensor.productname;
+                            var uniqueid: string = sensor.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
+                            var masterId: string = uniqueid.substr(0, 28);
+                            if (productName === "Hue motion sensor") {
+                                bridge.IdMap.set(masterId, nameSlug);
                             }
-                            if (
-                                thys.getHash(sensorA) !== thys.getHash(sensorB)
-                            ) {
-                                var nameSlug: string = thys.slugify(
-                                    sensorA.name
-                                );
-                                var sendState: boolean = false;
-                                if (sensorA.uniqueid) {
-                                    var productName: string =
-                                        sensorA.productname;
-                                    var uniqueid: string = sensorA.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
-                                    var masterId: string = uniqueid.substr(
-                                        0,
-                                        28
-                                    );
-                                    if (bridge.IdMap.has(masterId)) {
-                                        nameSlug = bridge.IdMap.get(
-                                            masterId
-                                        ).toString();
-                                    }
-                                    switch (productName) {
-                                        case "Hue motion sensor":
-                                            nameSlug = nameSlug + "/motion";
-                                            sendState = true;
-                                            break;
-                                        case "Hue ambient light sensor":
-                                            nameSlug =
-                                                nameSlug + "/ambientlight";
-                                            sendState = true;
-                                            break;
-                                        case "Hue temperature sensor":
-                                            nameSlug =
-                                                nameSlug + "/temperature";
-                                            sendState = true;
-                                            break;
-                                    }
-                                }
-                                if (sendState) {
-                                    var topic: string;
-                                    var payload: string;
-                                    if (bridge.subtopics) {
-                                        Object.keys(sensorA.state).forEach(
-                                            (key: any) => {
-                                                var keySlug = thys.slugify(key);
-                                                topic =
-                                                    bridge.prefix +
-                                                    "/" +
-                                                    nameSlug +
-                                                    "/" +
-                                                    keySlug;
-                                                payload = sensorA.state[key];
-                                            }
-                                        );
-                                    } else {
-                                        topic = bridge.prefix + "/" + nameSlug;
-                                        payload = JSON.stringify(sensorA.state);
-                                    }
-                                    if (bridge.logchanges) {
-                                        console.log(
-                                            "%s, %s %s",
-                                            new Date(Date.now()),
-                                            topic,
-                                            payload.toString()
-                                        );
-                                    }
-                                    thys.client.publish(
-                                        topic,
-                                        payload.toString()
-                                    );
-                                }
-                            }
-                            bridge.sensors[id] = sensorA;
                         }
                     });
-                
+                }
+                Object.keys(sensors).forEach((id: any) => {
+                    let sensorA = sensors[id];
+                    let sensorB = bridge.sensors[id];
+                    if (sensorA.error) {
+                        console.error(
+                            `Error polling sensors on Hue bridge (sensor A) ${bridge.host}: ${sensorA.error.description}`
+                        );
+                        throw sensorA.error;
+                    } else {
+                        if (sensorB === undefined) {
+                            bridge.sensors[id] = sensorA;
+                        }
+                        if (thys.getHash(sensorA) !== thys.getHash(sensorB)) {
+                            var nameSlug: string = thys.slugify(sensorA.name);
+                            var sendState: boolean = false;
+                            if (sensorA.uniqueid) {
+                                var productName: string = sensorA.productname;
+                                var uniqueid: string = sensorA.uniqueid; //00:17:88:01:03:29:7e:0e-02-0406
+                                var masterId: string = uniqueid.substr(0, 28);
+                                if (bridge.IdMap.has(masterId)) {
+                                    nameSlug = bridge.IdMap.get(
+                                        masterId
+                                    ).toString();
+                                }
+                                switch (productName) {
+                                    case "Hue motion sensor":
+                                        nameSlug = `${nameSlug}/motion`;
+                                        sendState = true;
+                                        break;
+                                    case "Hue ambient light sensor":
+                                        nameSlug = `${nameSlug}/ambientlight`;
+                                        sendState = true;
+                                        break;
+                                    case "Hue temperature sensor":
+                                        nameSlug = `${nameSlug}/temperature`;
+                                        sendState = true;
+                                        break;
+                                }
+                            }
+                            if (sendState) {
+                                var topic: string;
+                                var payload: string;
+                                if (bridge.subtopics) {
+                                    Object.keys(sensorA.state).forEach(
+                                        (key: any) => {
+                                            var keySlug = thys.slugify(key);
+                                            topic = `${bridge.prefix}/${nameSlug}/${keySlug}`
+                                            payload = sensorA.state[key];
+                                        }
+                                    );
+                                } else {
+                                    topic = `${bridge.prefix}/${nameSlug}`;
+                                    payload = JSON.stringify(sensorA.state);
+                                }
+                                if (bridge.logchanges) {
+                                    console.log(
+                                        `${new Date(
+                                            Date.now()
+                                        )}. ${topic} ${payload.toString()}`
+                                    );
+                                }
+                                thys.client.publish(topic, payload.toString());
+                            }
+                        }
+                        bridge.sensors[id] = sensorA;
+                    }
+                });
             });
         } catch (err) {
             console.error(
-                "Error polling sensors on Hue bridge %s: %s",
-                bridge.host,
-                err.toString()
+                `Error polling sensors on Hue bridge ${
+                    bridge.host
+                }: ${err.toString()}`
             );
         } finally {
+            thys.lastUpdate = Date.now();
             callback();
         }
     }
@@ -248,7 +239,7 @@ export class BridgePoller extends EventEmitter {
         let lights_opts = {
             method: "GET",
             uri:
-                "http://" + bridge.host + "/api/" + bridge.username + "/lights",
+                `http://${bridge.host}/api/${bridge.username}/lights`,
             json: true,
             agent: agent
         };
@@ -256,85 +247,74 @@ export class BridgePoller extends EventEmitter {
             request(lights_opts, function(err, res, body) {
                 if (err) {
                     console.error(
-                        "Error polling lights on Hue bridge %s: %s",
-                        bridge.host,
-                        err.toString()
+                        `Error polling lights on Hue bridge ${
+                            bridge.host
+                        }: ${err.toString()}`
                     );
                     throw err;
                 }
                 if (res.statusCode !== 200) {
                     console.error(
-                        "Error polling lights on Hue bridge %s: %s",
-                        bridge.host,
-                        body.toString()
+                        `Error polling lights on Hue bridge ${
+                            bridge.host
+                        }: ${body.toString()}`
                     );
-                    throw ("error code: " + res.statusCode.toString());
+                    throw `error code: ${res.statusCode.toString()}`;
                 }
-                    let lights: any = body;
+                let lights: any = body;
 
-                    Object.keys(lights).forEach((id: any) => {
-                        let lightA = lights[id];
-                        let lightB = bridge.lights[id];
-                        if (lightA.error) {
-                            console.error(
-                                "Error polling lights on Hue bridge %s: %s",
-                                bridge.host,
-                                lightA.error.description
-                            );
-                            throw lightA.error;
-                        } else {
-                            if (lightB === undefined) {
-                                bridge.lights[id] = lightA;
-                                lightB = {};
-                            }
-                            if (
-                                thys.getHash(lightA.state) !==
-                                thys.getHash(lightB.state)
-                            ) {
-                                var nameSlug: string = thys.slugify(
-                                    lightA.name.toString()
-                                );
-                                var topic: string;
-                                var payload: string;
-                                if (bridge.subtopics) {
-                                    Object.keys(lightA.state).forEach(
-                                        (key: any) => {
-                                            var keySlug = thys.slugify(key);
-                                            topic =
-                                                bridge.prefix +
-                                                "/" +
-                                                nameSlug +
-                                                "/" +
-                                                keySlug;
-                                            payload = lightA.state[key];
-                                        }
-                                    );
-                                } else {
-                                    topic = bridge.prefix + "/" + nameSlug;
-                                    payload = JSON.stringify(lightA.state);
-                                }
-                                if (bridge.logchanges) {
-                                    console.log(
-                                        "%s, %s %s",
-                                        new Date(Date.now()),
-                                        topic,
-                                        payload.toString()
-                                    );
-                                }
-                                thys.client.publish(topic, payload.toString());
-                            }
+                Object.keys(lights).forEach((id: any) => {
+                    let lightA = lights[id];
+                    let lightB = bridge.lights[id];
+                    if (lightA.error) {
+                        console.error(
+                            `Error polling lights on Hue bridge ${bridge.host}: ${lightA.error.description}`
+                        );
+                        throw lightA.error;
+                    } else {
+                        if (lightB === undefined) {
                             bridge.lights[id] = lightA;
+                            lightB = {};
                         }
-                    });
-                
+                        if (
+                            thys.getHash(lightA.state) !==
+                            thys.getHash(lightB.state)
+                        ) {
+                            var nameSlug: string = thys.slugify(
+                                lightA.name.toString()
+                            );
+                            var topic: string;
+                            var payload: string;
+                            if (bridge.subtopics) {
+                                Object.keys(lightA.state).forEach(
+                                    (key: any) => {
+                                        var keySlug = thys.slugify(key);
+                                        topic =`${bridge.prefix}/${nameSlug}/${keySlug}`;
+                                        payload = lightA.state[key];
+                                    }
+                                );
+                            } else {
+                                topic = `${bridge.prefix}/${nameSlug}`;
+                                payload = JSON.stringify(lightA.state);
+                            }
+                            if (bridge.logchanges) {
+                                console.log(`${new Date(Date.now())}, ${topic} ${ payload.toString()}`
+                                );
+                            }
+                            thys.client.publish(topic, payload.toString());
+                        }
+                        bridge.lights[id] = lightA;
+                    }
+                });
             });
         } catch (err) {
             console.error(
-                "Error polling lights on Hue bridge %s: %s",
-                bridge.host,
-                err.toString()
+                `Error polling lights on Hue bridge ${
+                    bridge.host
+                }: ${err.toString()}`
             );
         } finally {
+            thys.lastUpdate = Date.now();
             callback();
         }
     }

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "docker_build":"docker build . -t new_hue_mqtt"
+    "docker_build": "docker build . -t new_hue_mqtt"
   },
   "repository": {
     "type": "git",
@@ -18,11 +18,13 @@
   "homepage": "https://github.com/mikeygnyc/new_hue_mqtt#readme",
   "dependencies": {
     "async": "^3.1.0",
+    "express": "^4.17.1",
     "mqtt": "^3.0.0",
     "request": "^2.88.0"
   },
   "devDependencies": {
     "@types/async": "^3.0.1",
+    "@types/express": "^4.17.1",
     "@types/mqtt": "^2.5.0",
     "@types/node": "^12.7.4",
     "@types/request": "^2.48.2"
