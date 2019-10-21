@@ -32,9 +32,9 @@ export class BridgePoller extends EventEmitter {
         
         if (threshTime>this.lastUpdate){
             console.error("Last update greater than 30 seconds ago! Sending non-ok response.")
-            res.status(417).send({"Health":"FAIL"});
+            res.status(417).send({"Health":"FAIL","LastUpdate":new Date(this.lastUpdate)});
         } else {
-            res.status(200).send({"Health":"OK"});
+            res.status(200).send({"Health":"OK","LastUpdate":new Date(this.lastUpdate)});
         }
         
     }
