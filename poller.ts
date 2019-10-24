@@ -221,6 +221,7 @@ export class BridgePoller extends EventEmitter {
                             }
                         }
                         bridge.sensors[id] = sensorA;
+                        thys.lastUpdate = Date.now();
                     }
                 });
             });
@@ -231,7 +232,7 @@ export class BridgePoller extends EventEmitter {
                 }: ${err.toString()}`
             );
         } finally {
-            thys.lastUpdate = Date.now();
+            
             callback();
         }
     }
@@ -305,6 +306,7 @@ export class BridgePoller extends EventEmitter {
                             thys.client.publish(topic, payload.toString());
                         }
                         bridge.lights[id] = lightA;
+                        thys.lastUpdate = Date.now();
                     }
                 });
             });
@@ -315,7 +317,7 @@ export class BridgePoller extends EventEmitter {
                 }: ${err.toString()}`
             );
         } finally {
-            thys.lastUpdate = Date.now();
+            
             callback();
         }
     }
