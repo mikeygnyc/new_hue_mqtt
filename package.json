@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/mikeygnyc/new_hue_mqtt#readme",
   "dependencies": {
-    "async": "^3.1.0",
+    "async": "^3.2.2",
     "express": "^4.17.1",
     "mqtt": "^3.0.0",
     "request": "^2.88.0"
